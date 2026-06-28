@@ -26,3 +26,6 @@ async def list_repos() -> str:
         )
         repos = response.json()
         return "\n".join([f"- {r['name']}: {r['description'] or 'No description'}" for r in repos])
+
+if __name__ == '__main__':
+    mcp.run()
