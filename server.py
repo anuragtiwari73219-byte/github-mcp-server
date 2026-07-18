@@ -1,4 +1,8 @@
+import truststore
+truststore.inject_into_ssl()
+
 import os
+import ssl
 import httpx
 import certifi
 from dotenv import load_dotenv
@@ -19,13 +23,27 @@ mcp = FastMCP("GitHub MCP Server")
 
 def _resolve_repo(repo: str) -> str:
     """Accepts 'owner/repo' or just 'repo' (defaults to GITHUB_USERNAME)."""
+    repo = repo.strip()
+    if not repo:
+        raise ValueError("Repository name cannot be empty.")
     return repo if "/" in repo else f"{GITHUB_USERNAME}/{repo}"
 
 
 async def _github_request(method: str, url: str, **kwargs) -> tuple[bool, object]:
     """Shared request helper. Returns (ok, data_or_error_message)."""
-    async with httpx.AsyncClient(verify=certifi.where()) as client:
-        response = await client.request(method, url, headers=HEADERS, **kwargs)
+    try:
+        async with httpx.AsyncClient(verify=ssl.create_default_context(cafile=certifi.where()), timeout=15.0) as client:
+            response = await client.request(method, url, headers=HEADERS, **kwargs)
+    except httpx.TimeoutException:
+        return False, "Error: GitHub API request timed out after 15 seconds."
+    except httpx.ConnectError:
+        return False, "Error: Could not connect to GitHub API (network/DNS issue)."
+    except httpx.RequestError as e:
+        return False, f"Error: Request failed ({type(e).__name__}: {e})."
+
+    if response.status_code == 403 and response.headers.get("X-RateLimit-Remaining") == "0":
+        reset_ts = response.headers.get("X-RateLimit-Reset")
+        return False, f"GitHub rate limit exceeded. Resets at Unix timestamp {reset_ts}."
 
     if response.status_code >= 400:
         try:
@@ -76,7 +94,11 @@ async def list_issues(repo: str, state: str = "open") -> str:
     if state not in ("open", "closed", "all"):
         return "Error: state must be one of 'open', 'closed', or 'all'."
 
-    owner_repo = _resolve_repo(repo)
+    try:
+        owner_repo = _resolve_repo(repo)
+    except ValueError as e:
+        return f"Error: {e}"
+
     ok, data = await _github_request(
         "GET",
         f"https://api.github.com/repos/{owner_repo}/issues",
@@ -106,7 +128,11 @@ async def create_issue(repo: str, title: str, body: str = "") -> str:
     if not title.strip():
         return "Error: title cannot be empty."
 
-    owner_repo = _resolve_repo(repo)
+    try:
+        owner_repo = _resolve_repo(repo)
+    except ValueError as e:
+        return f"Error: {e}"
+
     ok, data = await _github_request(
         "POST",
         f"https://api.github.com/repos/{owner_repo}/issues",
