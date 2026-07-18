@@ -4,9 +4,11 @@ An MCP (Model Context Protocol) server that connects Claude Desktop to GitHub �
 
 ## Tools
 
-- **list_repos** — Lists all public repositories for the configured GitHub user
-- **list_issues** — Lists open issues for a given repository
+- **list_repos** — Lists public repositories for the configured GitHub user, paginated (30/page by default; pass `page` for more)
+- **list_issues** — Lists issues for a given repository; `state` can be `open` (default), `closed`, or `all`. Pull requests are filtered out of the results.
 - **create_issue** — Creates a new issue in a given repository
+
+All tools return a readable error message (instead of crashing) if the GitHub API call fails — e.g. invalid repo, bad token, or rate limiting.
 
 ## Tech Stack
 
